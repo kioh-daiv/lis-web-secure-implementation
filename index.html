@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部門システム Web 基盤 セキュア実装ガイド — どこまでやれば安心か</title>
+<meta name="description" content="臨床検査部門システム（LIS）のWebサービスを、法規制・安全要件を満たして実装するためのガイド。OWASP ASVS 5.0 のレベル2を安心ラインに、3省2GLと検査業務要件を Spring/Angular の実装例で示す。">
+<style>
+:root{
+  --primary:#0e4d92; --primary-light:#2563eb; --accent:#06b6d4;
+  --l1:#6b7280; --l1-bg:#f3f4f6; --l1-bd:#e5e7eb;
+  --l2:#2563eb; --l2-bg:#eff6ff; --l2-bd:#bfdbfe;
+  --l3:#7c3aed; --l3-bg:#f5f3ff; --l3-bd:#ddd6fe;
+  --lab:#0369a1; --lab-bg:#f0f9ff; --lab-bd:#7dd3fc;
+  --code:#0e4d92; --code-bg:#f0f7ff; --code-bd:#bfdbfe;
+  --bg:#f8fafc; --bg-card:#fff; --text:#1f2937; --text-soft:#6b7280; --border:#e5e7eb;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Hiragino Sans","Yu Gothic","Meiryo",-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+a{color:var(--primary-light)}
+
+header{background:linear-gradient(135deg,#0e4d92 0%,#1e3a8a 50%,#06b6d4 100%);color:#fff;padding:46px 0 38px}
+header h1{font-size:25px;font-weight:700;margin-bottom:12px}
+header p.sub{font-size:15px;opacity:.92;max-width:840px}
+header .sibling{margin-top:16px;font-size:13px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:10px 14px;display:inline-block}
+header .sibling a{color:#fff;text-decoration:underline}
+header .meta{margin-top:14px;font-size:12.5px;opacity:.8}
+
+.intro{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px 26px;margin:28px 0}
+.intro h2{font-size:17px;color:var(--primary);margin-bottom:10px}
+.intro p{margin-bottom:8px}
+.intro .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.intro .two .q{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:13px 15px;font-size:13.5px}
+.intro .two .q b{color:var(--primary);display:block;margin-bottom:4px}
+.intro p.note{font-size:13px;color:var(--text-soft);margin-top:12px}
+
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.badge.l1{background:var(--l1-bg);color:var(--l1);border:1px solid var(--l1-bd)}
+.badge.l2{background:var(--l2-bg);color:var(--l2);border:1px solid var(--l2-bd)}
+.badge.l3{background:var(--l3-bg);color:var(--l3);border:1px solid var(--l3-bd)}
+.badge.lab{background:var(--lab-bg);color:var(--lab);border:1px solid var(--lab-bd)}
+.badge.asvs{background:#fff;color:var(--text-soft);border:1px solid var(--border);font-weight:600}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 4px;font-size:13px;color:var(--text-soft)}
+.legend .i{display:flex;align-items:center;gap:7px}
+
+/* 安心ライン図 */
+.line{display:flex;align-items:stretch;gap:0;margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+.line .seg{flex:1;padding:14px 16px;font-size:13px}
+.line .seg .t{font-weight:700;margin-bottom:5px}
+.line .seg.s1{background:var(--l1-bg)} .line .seg.s1 .t{color:var(--l1)}
+.line .seg.s2{background:var(--l2-bg);border-left:1px solid var(--l2-bd);border-right:1px solid var(--l2-bd)} .line .seg.s2 .t{color:var(--l2)}
+.line .seg.s3{background:var(--l3-bg)} .line .seg.s3 .t{color:var(--l3)}
+.safe-mark{background:var(--l2);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;display:inline-block;margin-top:6px}
+
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin:28px 0 4px;flex-wrap:wrap}
+.tab{background:none;border:none;padding:11px 14px;font-size:13.5px;font-weight:600;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;font-family:inherit}
+.tab:hover{color:var(--primary)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.panel{display:none;padding-top:22px}
+.panel.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+h3.sec{font-size:15px;color:var(--primary);margin:18px 0 12px;padding-left:11px;border-left:4px solid var(--accent)}
+h3.sec:first-child{margin-top:4px}
+
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.card>summary{list-style:none;cursor:pointer;padding:15px 18px;display:flex;align-items:flex-start;gap:10px;justify-content:space-between}
+.card>summary::-webkit-details-marker{display:none}
+.card>summary:hover{background:#fafbfc}
+.card .tw{display:flex;flex-direction:column;gap:6px}
+.card .tr{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.card h4{font-size:14.5px;color:var(--primary);font-weight:700}
+.card .chev{color:var(--text-soft);font-size:13px;flex-shrink:0;margin-top:4px;transition:transform .2s}
+.card[open] .chev{transform:rotate(180deg)}
+.card .body{padding:4px 18px 18px;border-top:1px solid var(--border)}
+.card .body .row{margin-top:12px}
+.card .body .row .h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-soft);margin-bottom:5px}
+.card .body .row p{font-size:13.5px}
+.card .body .why{background:#f6f8fa;border-radius:8px;padding:10px 13px;font-size:13px}
+pre{background:var(--code-bg);border:1px solid var(--code-bd);border-radius:8px;padding:11px 13px;overflow-x:auto;margin-top:5px}
+pre code{font-family:"SFMono-Regular",Consolas,monospace;font-size:12px;color:var(--code);line-height:1.55;white-space:pre}
+.stack-label{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;background:var(--text-soft);padding:1px 7px;border-radius:4px;margin-bottom:3px}
+.stack-label.spring{background:#6db33f}
+.stack-label.angular{background:#dd0031}
+code.inl{background:var(--code-bg);border:1px solid var(--code-bd);border-radius:4px;padding:1px 5px;font-size:12px;color:var(--code);font-family:"SFMono-Regular",Consolas,monospace}
+
+.note-box{background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid var(--primary-light);border-radius:8px;padding:13px 17px;margin:14px 0;font-size:13.5px}
+.note-box strong{color:var(--primary)}
+.note-box.lab{background:var(--lab-bg);border-color:var(--lab-bd);border-left-color:var(--lab)}
+.note-box.lab strong{color:var(--lab)}
+
+.matrix{width:100%;border-collapse:collapse;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;font-size:12.5px;margin-top:8px}
+.matrix th,.matrix td{padding:9px 11px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}
+.matrix thead th{background:var(--primary);color:#fff;font-weight:600;font-size:12px}
+.matrix tbody tr:nth-child(even){background:#fafbfc}
+.matrix td.c{font-weight:600;color:var(--primary)}
+.matrix .badge{font-size:10px;padding:2px 6px}
+
+footer{margin:46px 0 60px}
+.sources{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:22px 26px}
+.sources h2{font-size:15px;color:var(--primary);margin-bottom:12px}
+.sources ul{list-style:none;padding:0}
+.sources li{margin-bottom:6px;font-size:12.5px}
+.sources a{word-break:break-all}
+.disclaimer{margin-top:16px;font-size:12px;color:var(--text-soft);line-height:1.6}
+
+@media(max-width:760px){
+  header h1{font-size:20px}
+  .intro .two{grid-template-columns:1fr}
+  .line{flex-direction:column}
+  .matrix{font-size:11px}
+  .card>summary{padding:13px}
+  .card .body{padding:4px 13px 14px}
+  pre code{font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>部門システム Web 基盤<br>セキュア実装ガイド</h1>
+    <p class="sub">機能は実装できる。では「法規制を満たし、安全に使ってもらう」ために Web 基盤に何を実装し、どこまでやれば安心と言えるのか ——OWASP ASVS 5.0 のレベル2 を安心ラインに、3省2ガイドラインと検査業務の要件を、Java(Spring)・Angular の実装例で示す。</p>
+    <div class="sibling">医療DX シリーズ：
+      <a href="https://kioh-daiv.github.io/medical-dx-roadmap-overview/">工程表 全体像</a> ／
+      <a href="https://kioh-daiv.github.io/lis-cloud-compliance-guide/">法規制対応（AWS基盤）</a> ／
+      <a href="https://kioh-daiv.github.io/lis-procurement-qualifications/">受注の資格要件</a>
+    </div>
+    <div class="meta">最終更新：2026年5月 ／ 対象：臨床検査（検査・細菌・病理）の部門システム Web サービス</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="intro">
+    <h2>2 つの問いに分けて答える</h2>
+    <div class="two">
+      <div class="q"><b>何を実装するか</b>機能ロジックの「上」に、認証・認可・監査ログ・データ保護・Web セキュリティを Web 基盤として組み込む。AWS（インフラ）が用意した暗号化基盤・WAF・監査基盤を、アプリが正しく使う実装が要る。</div>
+      <div class="q"><b>どこまでやれば安心か</b>「安心」は主観なので、検証可能な基準に置き換える。OWASP ASVS のレベル2（L1+L2）を満たせば、客観的に「ここまでやった」と言える。これを安心ラインとする。</div>
+    </div>
+    <div class="note-box"><strong>AWS の「上」にアプリ実装がある：</strong> KMS があっても、アプリが要配慮フィールドを暗号化しなければ守られない。WAF があっても、アプリの SQL インジェクション対策がなければ抜かれる。CloudTrail は AWS 操作の証跡で、「誰がどの患者の検査結果を見たか」はアプリが出す監査ログ。インフラは土台、本ガイドはその上のアプリ実装を扱う。</div>
+    <p class="note">本資料は 2026 年 5 月時点の一般整理。実装例は方針を示すもので、実際の採用にあたっては各バージョンの公式ドキュメントと自組織のセキュリティ方針で検証すること。OWASP ASVS は 5.0.0（2025年5月）を参照。</p>
+  </div>
+
+  <div class="legend" style="margin:18px 0 0">
+    <span class="i" style="color:var(--text);font-weight:600;margin-right:2px">凡例：</span>
+    <span class="i"><span class="badge l1">L1</span>基礎</span>
+    <span class="i"><span class="badge l2">L2</span>標準（安心ライン）</span>
+    <span class="i"><span class="badge l3">L3</span>高保証</span>
+    <span class="i"><span class="badge lab">検査特有</span></span>
+    <span class="i"><span class="badge asvs">ASVS V6</span>該当章（例）</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-panel="overview">安心ラインの考え方</button>
+    <button class="tab" data-panel="authnz">認証・セッション・認可</button>
+    <button class="tab" data-panel="input">入力・出力・Web</button>
+    <button class="tab" data-panel="crypto">暗号・データ保護・通信</button>
+    <button class="tab" data-panel="ops">ログ・API・設定・依存</button>
+    <button class="tab" data-panel="lab">検査業務特有</button>
+  </div>
+
+  <!-- ===== 全体像 ===== -->
+  <section class="panel active" id="overview">
+    <h3 class="sec">「どこまで」を ASVS のレベルで答える</h3>
+    <p style="font-size:14px">OWASP ASVS（Application Security Verification Standard）5.0 は、Web アプリのセキュリティ要件を 17 章・約 350 項目に整理したチェックリスト。リスクに応じた 3 段階のレベルがある。</p>
+    <div class="line">
+      <div class="seg s1"><div class="t">L1 基礎</div>第一層防御。最も重要なリスクに対処する、明確で少数の要件。</div>
+      <div class="seg s2"><div class="t">L2 標準</div>ほとんどのアプリが目指すべき水準。L1+L2 で全要件の約 70%。<span class="safe-mark">要配慮情報を扱う部門システムの安心ライン</span></div>
+      <div class="seg s3"><div class="t">L3 高保証</div>残り約 30%。多層防御や高難度の統制。大病院・公的調達・人命に関わる系。</div>
+    </div>
+    <div class="note-box"><strong>安心の定義：</strong> 「ASVS の L1+L2 を全項目満たし、加えて 3省2GL のアプリ要件と検査業務特有を実装した」状態 ＝ 客観的に「ここまでやった」と説明できる。これは法規制ガイドでやった網羅性の証明と同じ思想 ——主観でなくフレームワークで網羅し、チェックリストで証跡化する。「どこまで?」と問われたら「ASVS L2 を全部潰した、証跡はこれ」と即答できる。</div>
+
+    <h3 class="sec">過剰と不足の線引き</h3>
+    <table class="matrix">
+      <thead><tr><th style="width:30%">姿勢</th><th style="width:70%">評価</th></tr></thead>
+      <tbody>
+        <tr><td class="c">機能が動いたら完了</td><td>不足。認証・監査・データ保護の実装が抜け、法規制違反・漏えいリスクが残る。</td></tr>
+        <tr><td class="c">全項目を L3 まで</td><td>過剰。コストと工数が膨らみ、現場の開発が回らない。</td></tr>
+        <tr><td class="c">要配慮コアは L2（一部 L3）、周辺は L1〜L2</td><td>現実解。患者の検査データを扱う中核機能に L2 を確実に、リスクの高い箇所だけ L3 を足す。</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sec">実装カテゴリ一覧（このガイドの構成）</h3>
+    <table class="matrix">
+      <thead><tr><th style="width:26%">カテゴリ</th><th style="width:40%">主な実装</th><th style="width:34%">紐づく法規制・ASVS章</th></tr></thead>
+      <tbody>
+        <tr><td class="c">認証・セッション・認可</td><td>二要素認証、セッションタイムアウト、RBAC、データ単位認可</td><td>3省2GL運用編14章 / ASVS V6,V7,V8</td></tr>
+        <tr><td class="c">入力・出力・Web</td><td>入力検証、SQLi/XSS/CSRF 対策</td><td>安全管理措置 / ASVS V1,V2,V3,V4</td></tr>
+        <tr><td class="c">暗号・データ保護・通信</td><td>フィールド暗号化、マスキング、TLS 強制</td><td>個情法23条 / ASVS V11,V12,V14</td></tr>
+        <tr><td class="c">ログ・API・設定・依存</td><td>監査ログ、API 認証、依存脆弱性管理、秘密情報管理</td><td>3省2GL / 事業者向けGL / ASVS V13,V15,V16</td></tr>
+        <tr><td class="c">検査業務特有</td><td>精度管理記録、トレーサビリティ、結果確定・訂正履歴、届出連携</td><td>検体検査精度確保 / 感染症法</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== 認証・セッション・認可 ===== -->
+  <section class="panel" id="authnz">
+    <h3 class="sec">認証（ASVS V6）</h3>
+    <details class="card" open>
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V6</span><h4>二要素認証（MFA）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">3省2GL 運用編14章 遵守事項⑤（努力規定）。令和9年度（2027年4月〜）に稼働する新規・更新システムは、原則として二要素認証の採用が望ましい。努力規定だが、要配慮情報を扱うため L2 として実装する。</div></div>
+        <div class="row"><div class="h">実装例</div>
+          <span class="stack-label spring">Spring</span>
+          <pre><code>// Spring Security 6.4+ の組み込みパスキー（WebAuthn）または TOTP
+// 物理区画（検査室）運用なら ICカード+生体で「二要素相当」も可
+http.webAuthn(w -> w.rpName("LIS").rpId("lis.example.jp")
+                    .allowedOrigins("https://lis.example.jp"));</code></pre>
+          <span class="stack-label angular">Angular</span>
+          <pre><code>// WebAuthn は navigator.credentials.create/get を使用
+// MFA 入力画面は通常のフォーム + ワンタイムコード検証 API 呼び出し</code></pre>
+        </div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V6</span><h4>パスワードの安全な保管とポリシー</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">平文・可逆保管は漏えい時に致命的。ハッシュ（ソルト付き）保管と、長さ重視のポリシー、漏えいパスワードの拒否。</div></div>
+        <div class="row"><div class="h">実装例</div>
+          <span class="stack-label spring">Spring</span>
+          <pre><code>@Bean PasswordEncoder encoder() {
+  return new BCryptPasswordEncoder(12); // または Argon2PasswordEncoder
+}
+// 推定不可・運用担当者もパスワードを復元できない（3省2GL 14章⑥）</code></pre>
+        </div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V6</span><h4>アカウントロックアウト（ブルートフォース対策）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">総当たり攻撃の防止。一定回数の失敗でロック、または指数的バックオフ。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// AuthenticationFailureHandler で失敗回数を記録、閾値でロック
+// アカウント列挙を防ぐため、エラーメッセージは一律にする</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">セッション管理（ASVS V7）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V7</span><h4>セッションタイムアウト（共有端末の自動ログアウト）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">検査室・ナースステーションの共有端末では、放置されたセッションからの不正閲覧を防ぐ。アイドルと絶対の両方のタイムアウト。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>server.servlet.session.timeout=15m   # アイドルタイムアウト
+# Angular 側でも操作監視 → 一定時間で自動ログアウト + 警告ダイアログ</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V7</span><h4>セッション ID 再生成・Cookie 属性</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">ログイン時のセッション ID 再生成（固定化攻撃対策）、ログアウトで確実に無効化。Cookie は盗難・改ざんを防ぐ属性を付与。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>http.sessionManagement(s -> s.sessionFixation().newSession());
+server.servlet.session.cookie.http-only=true
+server.servlet.session.cookie.secure=true
+server.servlet.session.cookie.same-site=strict</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">認可（ASVS V8）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V8</span><h4>サーバ側での認可チェック（全リクエスト）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">画面の出し分けだけでは不十分。すべての API でサーバ側が権限を検証する。クライアントの制御は迂回されうる。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>@PreAuthorize("hasRole('TECHNOLOGIST')")
+public Result confirmResult(Long id) { ... }
+// メソッドセキュリティを有効化：@EnableMethodSecurity</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V8</span><h4>RBAC（職種別）と結果確定権限・代行入力の識別</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">医師・臨床検査技師・事務で権限を分ける。検査結果の確定権限と代行入力時の代行者識別（3省2GL 運用編14章⑧、記録確定・真正性）。検体検査の精度確保とも結びつく。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>@PreAuthorize("hasRole('DOCTOR') and @resultPolicy.canConfirm(#id, principal)")
+// 代行入力は actor（操作者）と subject（責任者）を別々に記録</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V8</span><h4>データ単位の認可（IDOR 対策）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">URL の ID を書き換えて他患者・他部門のデータを閲覧できてはならない。リソース所有権をサーバ側で必ず検証する。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// id だけでなく「その利用者がアクセスしてよいか」を where 句に含める
+repo.findByIdAndDepartment(id, currentUser.getDepartment())
+    .orElseThrow(AccessDeniedException::new);</code></pre></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 入力・出力・Web ===== -->
+  <section class="panel" id="input">
+    <h3 class="sec">入力検証・SQL インジェクション（ASVS V1,V2）</h3>
+    <details class="card" open>
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V1,V2</span><h4>サーバ側入力検証 ＋ SQL インジェクション対策</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">クライアント検証は迂回される。サーバで型・範囲・必須を検証。SQL は文字列連結せずプレースホルダ（バインド）を使う。</div></div>
+        <div class="row"><div class="h">実装例</div>
+          <span class="stack-label spring">Spring</span>
+          <pre><code>// Bean Validation
+public record OrderReq(@NotNull Long patientId, @Size(max=50) String memo) {}
+@PostMapping void create(@Valid @RequestBody OrderReq r) { ... }
+// SQLi 対策：JPA / @Query はパラメータバインド。文字列連結は禁止
+@Query("select r from Result r where r.code = :code")</code></pre>
+        </div>
+      </div>
+    </details>
+
+    <h3 class="sec">XSS・CSRF（ASVS V3 Web Frontend）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V3</span><h4>XSS（クロスサイトスクリプティング）対策</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">検査コメント等にスクリプトを埋め込まれ、他利用者のブラウザで実行されるのを防ぐ。出力時のエスケープが基本。</div></div>
+        <div class="row"><div class="h">実装例</div>
+          <span class="stack-label angular">Angular</span>
+          <pre><code>// Angular は {{ }} 補間とプロパティバインドで自動エスケープ
+// 危険：bypassSecurityTrustHtml() の安易な使用は禁止
+// HTML を表示するなら DomSanitizer で必ずサニタイズ</code></pre>
+        </div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V3</span><h4>CSRF（クロスサイトリクエストフォージェリ）対策</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">利用者の意図しないリクエスト（結果確定・削除など）を第三者サイトから送られるのを防ぐ。</div></div>
+        <div class="row"><div class="h">実装例</div>
+          <span class="stack-label spring">Spring</span><pre><code>// Spring Security は CSRF 保護がデフォルト有効
+// SPA は CookieCsrfTokenRepository でトークンを Cookie 配布</code></pre>
+          <span class="stack-label angular">Angular</span><pre><code>// provideHttpClient(withXsrfConfiguration({
+//   cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }))
+// XSRF-TOKEN Cookie を読み X-XSRF-TOKEN ヘッダで自動送信</code></pre>
+        </div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V4,V5</span><h4>SSRF・ファイルアップロード・ビジネスロジック検証</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">外部連携（届出・参照系）の URL を悪用した SSRF、アップロードファイルのウイルス・型偽装、業務ルールの逸脱（マイナス値・不正な状態遷移）を防ぐ。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// 外部リクエスト先は許可リストで限定（任意URL禁止）
+// アップロードは MIME・拡張子・サイズ検証 + ウイルススキャン
+// 状態遷移は enum + ガード条件でサーバ検証</code></pre></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 暗号・データ保護・通信 ===== -->
+  <section class="panel" id="crypto">
+    <h3 class="sec">データ保護（ASVS V14）</h3>
+    <details class="card" open>
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V14</span><h4>要配慮フィールドの暗号化</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">個情法23条（安全管理措置）。検査結果・病理診断・感染症情報は要配慮個人情報。DB 全体暗号化（AWS の保存時暗号化）に加え、特に機微なフィールドはアプリ側で暗号化する選択肢。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// JPA AttributeConverter でフィールド暗号化（AES-GCM）
+@Convert(converter = EncryptedStringConverter.class)
+private String diagnosis;
+// 鍵は KMS / Secrets Manager 管理。コードにハードコードしない</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V14</span><h4>画面マスキング・ログへの PII 出力防止</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">権限や場面に応じて要配慮情報を伏せる。ログ・エラー・URL クエリに患者情報を出さない（ログ自体が漏えい経路になる）。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// ログ出力時に PII をマスクするフィルタ（logback）
+// 患者 ID は URL クエリでなくパス or ボディ、ログにはハッシュ/連番</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">暗号・鍵管理（ASVS V11）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V11</span><h4>鍵管理とアルゴリズム選定</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">弱いアルゴリズム・固定鍵・コード内の鍵を避ける。鍵のローテーション、廃棄時の暗号学的消去（鍵削除）。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// AES-256-GCM 等の標準アルゴリズム。鍵は AWS KMS / CloudHSM
+// 自前で暗号方式を発明しない（標準ライブラリを使う）</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">通信（ASVS V12）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V12</span><h4>TLS 強制・HSTS</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">全通信を TLS 1.2 以上で暗号化。HTTP は HTTPS にリダイレクト、HSTS で常時 HTTPS を強制。内部通信（マイクロサービス間）も TLS。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>http.requiresChannel(c -> c.anyRequest().requiresSecure());
+http.headers(h -> h.httpStrictTransportSecurity(hsts -> hsts.maxAgeInSeconds(31536000)));</code></pre></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== ログ・API・設定・依存 ===== -->
+  <section class="panel" id="ops">
+    <h3 class="sec">監査ログ・エラー処理（ASVS V16）</h3>
+    <details class="card" open>
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V16</span><h4>監査ログ（誰が・いつ・どの患者の・何を）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">3省2GL のアクセス証跡要件。漏えい時の事実調査・保守作業ログにも使う。患者単位のアクセスを時系列で追える形で残す。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// AOP @Around または HandlerInterceptor で操作を記録
+// 構造化ログ（JSON）+ MDC で相関ID。actor / action / patientRef / timestamp
+// ログは改ざん防止（S3 Object Lock 等の WORM 保管へ転送）</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V16</span><h4>エラーで内部情報を漏らさない</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">スタックトレース・SQL・内部パスを画面に出すと攻撃の手がかりになる。本番では汎用エラー、詳細はサーバログのみ。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>@ControllerAdvice + @ExceptionHandler で一律のエラー応答
+server.error.include-stacktrace=never
+server.error.include-message=never  # 本番</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">API（ASVS V4）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V4</span><h4>API 認証・レート制限・過剰データ露出の防止</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">電子カルテ・他部門との連携 API は、トークン認証で利用範囲を限定し、レート制限で乱用を防ぐ。レスポンスに不要なフィールドを含めない。電子カルテ連携は FHIR 等の標準形式で入出力する（標準規格対応）。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// OAuth2 Resource Server（JWT 検証）
+http.oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()));
+// レート制限：Resilience4j / API Gateway
+// レスポンスは DTO で必要項目だけ返す（エンティティ直返し禁止）</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">設定・依存・セキュアコーディング（ASVS V13,V15）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">ASVS V15</span><h4>依存ライブラリの脆弱性管理（SCA）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">事業者向けGL の管理策。既知脆弱性のあるライブラリの混入を継続的に検知し、パッチを適用する。SBOM の整備。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// OWASP Dependency-Check（Maven/Gradle plugin）/ Snyk を CI に組込み
+// AWS Inspector で SBOM（CycloneDX/SPDX）出力</code></pre></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l1">L1</span><span class="badge asvs">ASVS V13</span><h4>セキュリティヘッダー・秘密情報・本番設定</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">CSP・X-Content-Type-Options 等のヘッダー、秘密情報のハードコード禁止、本番でのデバッグ・詳細エラー無効化。</div></div>
+        <div class="row"><div class="h">実装例</div><span class="stack-label spring">Spring</span><pre><code>// セキュリティヘッダー：CSP, X-Frame-Options, X-Content-Type-Options
+http.headers(h -> h.contentSecurityPolicy(c -> c.policyDirectives("default-src 'self'")));
+// 秘密情報は Secrets Manager / 環境変数。application.yml に平文で書かない</code></pre></div>
+      </div>
+    </details>
+
+    <h3 class="sec">可用性・BCP・保存期間（ASVS V1 / 経営管理編）</h3>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge l2">L2</span><span class="badge asvs">経営管理編</span><h4>障害対応・冪等性・ログの保存期間</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">3省2GL は CIA の「可用性」と BCP を求める（経営管理編・企画管理編）。検査システムは止まると診療が止まる。インフラ（Multi-AZ 等）に加え、アプリ層でも障害に耐える実装が要る。監査ログ・記録は法定保存年限を満たす期間で保持する。</div></div>
+        <div class="row"><div class="h">実装の要点</div>
+          <span class="stack-label spring">Spring</span>
+          <pre><code>// ヘルスチェック（liveness/readiness）：Spring Boot Actuator
+// グレースフルシャットダウン：server.shutdown=graceful
+// 再送に耐える冪等性（重複オーダー防止）：冪等キー + 一意制約
+// 依存先障害のタイムアウト・サーキットブレーカー：Resilience4j
+// ログ・記録は保存年限（診療録5年 等）をライフサイクルで管理</code></pre>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===== 検査業務特有 ===== -->
+  <section class="panel" id="lab">
+    <div class="note-box lab"><strong>検査・細菌・病理の固有要件：</strong> 一般的な Web セキュリティに加え、検体検査の精度確保（医療法・施行規則）と感染症法が、システムに特有の実装を求める。これらは ASVS の枠の外側で、医療ドメインとして上乗せする。</div>
+    <details class="card" open>
+      <summary><div class="tw"><div class="tr"><span class="badge lab">検査特有</span><span class="badge lab">重要度：高</span><h4>精度管理記録の保持・改ざん防止</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">検体検査の精度確保（医療法15条の2・施行規則9条の7の2）。内部精度管理・外部精度管理調査・標準作業書・作業日誌を、改ざん不能で保持する。</div></div>
+        <div class="row"><div class="h">実装の要点</div><div class="why">確定記録は WORM 保管（S3 Object Lock コンプライアンスモード）。作業日誌は後追い一括入力を防ぐタイムスタンプ強制。SOP はバージョニングで版管理。</div></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge lab">検査特有</span><span class="badge lab">重要度：高</span><h4>トレーサビリティ（試薬ロット・装置・校正）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">どの検査結果が、どの装置で、どの試薬ロットで、いつ出されたかを追える。再検査・リコール時の特定に必須。</div></div>
+        <div class="row"><div class="h">実装の要点</div><div class="why">分析装置との連携 I/F でロット・校正情報を欠落なく取り込む。結果レコードに装置・ロット・実施者・時刻を紐づけて記録。</div></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge lab">検査特有</span><span class="badge lab">重要度：高</span><h4>結果の確定・訂正履歴（真正性）</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">電子保存の三原則（真正性）。確定後の結果を誰が・いつ・なぜ訂正したかを残し、訂正前後を追えるようにする。確定操作の承認、代行入力の識別。</div></div>
+        <div class="row"><div class="h">実装の要点</div><div class="why">結果は上書きでなくバージョン管理（イミュータブルな履歴）。訂正理由を必須入力、確定者と訂正者を別々に記録。</div></div>
+      </div>
+    </details>
+    <details class="card">
+      <summary><div class="tw"><div class="tr"><span class="badge lab">細菌・微生物</span><span class="badge lab">重要度：高</span><h4>パニック値アラート・感染症届出データ連携</h4></div></div><span class="chev">▼</span></summary>
+      <div class="body">
+        <div class="row"><div class="h">なぜ</div><div class="why">救急パニック値の即時通知（完全性・可用性が機密性に優先する場面）。感染症法第12条の届出対象を検出した際の、正確な届出データ生成と安全な連携。</div></div>
+        <div class="row"><div class="h">実装の要点</div><div class="why">パニック値は確実な通知経路（フェイルセーフ）。届出データ連携は暗号化された限定経路（API Gateway+TLS、必要に応じ PrivateLink/VPN）と連携証跡。届出の最終判断は医師で、システムは支援に留める。</div></div>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <div class="sources">
+      <h2>出典・参照</h2>
+      <ul>
+        <li>OWASP ASVS 5.0.0（2025年5月） <a href="https://owasp.org/www-project-application-security-verification-standard/">owasp.org</a></li>
+        <li>OWASP Top 10 / Cheat Sheet Series <a href="https://cheatsheetseries.owasp.org/">cheatsheetseries.owasp.org</a></li>
+        <li>厚労省 医療情報システムの安全管理に関するガイドライン 第6.0版 <a href="https://www.mhlw.go.jp/stf/shingi/0000516275_00006.html">mhlw.go.jp</a></li>
+        <li>個人情報保護委員会 医療・介護関係事業者ガイダンス <a href="https://www.ppc.go.jp/personalinfo/legal/iryoukaigo_guidance/">ppc.go.jp</a></li>
+        <li>検体検査の精度の確保に係る基準（厚労省） <a href="https://www.mhlw.go.jp/content/10800000/000911173.pdf">mhlw.go.jp</a></li>
+        <li>Spring Security リファレンス <a href="https://docs.spring.io/spring-security/reference/">docs.spring.io</a> ／ Angular Security <a href="https://angular.dev/best-practices/security">angular.dev</a></li>
+      </ul>
+      <p class="disclaimer">本資料は 2026 年 5 月時点の一般整理であり、特定の組織・案件における十分性を保証しない。OWASP ASVS のレベルは目安で、最終的な実装範囲は対象システムのリスク評価に基づく。実装例は方針を示すコード断片で、各フレームワーク（Spring Security／Angular）の採用バージョンの公式ドキュメントで最新の作法を確認すること。法規制の条項は原典で最終確認すること。</p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      var target = tab.getAttribute('data-panel');
+      document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById(target).classList.add('active');
+      var tabsEl = document.querySelector('.tabs');
+      var tabsTop = tabsEl.getBoundingClientRect().top + window.scrollY - 12;
+      if (window.scrollY > tabsTop) window.scrollTo({ top: tabsTop, behavior: 'smooth' });
+    });
+  });
+</script>
+
+</body>
+</html>
